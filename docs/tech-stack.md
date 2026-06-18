@@ -1,11 +1,18 @@
 # markdiff — tech stack & architecture
 
 This document records the libraries chosen for markdiff and why, plus the data
-flow they implement. It is the reference for anyone extending the plugin.
+flow they are intended to implement. It is the reference for anyone extending
+the plugin.
+
+markdiff is currently an implementation scaffold. The git wrapper, diff parser,
+settings UI, command registration, and initial renderer exist. The inline note
+UI, changed-files browser, restore UI, blame-to-line author mapping, and
+character-span wrapping inside rendered Markdown are still TODOs.
 
 ## Goals recap
 
-markdiff renders git diffs of Markdown notes as **rendered Markdown**, with:
+markdiff is intended to render git diffs of Markdown notes as **rendered
+Markdown**, with:
 
 - comparison of any two versions of a note, or two different files;
 - **character-level** diffs highlighted *inside* the rendered rich text;
@@ -68,11 +75,12 @@ time-sensitive, so refresh this section before a dependency upgrade.
 
 ## Build & dev tooling (devDependencies)
 
-Mirrors the current official `obsidian-sample-plugin`:
+The development tooling follows the same shape as the official
+`obsidian-sample-plugin`:
 
 | Package | Version | Role |
 |---------|---------|------|
-| `obsidian` | `latest` | API typings (external, not bundled) |
+| `obsidian` | `1.13.1` | API typings (external, not bundled) |
 | `esbuild` | `0.25.5` | Bundler |
 | `builtin-modules` | `^5.0.0` | Feeds Node builtins into esbuild externals |
 | `typescript` | `^5.8.3` | Compiler / type-check (`tsc -noEmit`) |
@@ -81,7 +89,14 @@ Mirrors the current official `obsidian-sample-plugin`:
 | `eslint-plugin-obsidianmd` | `^0.3.0` | Obsidian submission-readiness rules |
 | `globals`, `jiti` | — | ESLint flat-config support |
 
-## Architecture & data flow
+`esbuild.config.mjs` writes the bundle to `main.js` at the repository root. The
+manual install flow copies `main.js`, `manifest.json`, and `styles.css` into the
+vault plugin directory.
+
+## Target architecture & data flow
+
+The source tree is shaped around this pipeline, but `src/main.ts` does not call
+the full flow yet. The registered commands still throw `Not implemented`.
 
 ```
 active note ──▶ Repo.forFile()            (git/repo.ts)
@@ -99,10 +114,16 @@ active note ──▶ Repo.forFile()            (git/repo.ts)
                   ▼
             renderFileDiff()               (render/renderDiff.ts)
                   │  MarkdownRenderer.render() per line
-                  │  wrap character segments in .markdiff-add / .markdiff-del
+                  │  TODO: wrap character segments in .markdiff-add /
+                  │        .markdiff-del
                   ▼
             inline in the note's reading view
 ```
+
+`renderFileDiff()` currently renders whole diff lines through
+`MarkdownRenderer.render()`. It accepts parsed character segments, but the DOM
+post-processing that wraps those segments inside rendered Markdown has not been
+implemented yet.
 
 ### Why the reading view, not CodeMirror decorations
 
@@ -122,21 +143,34 @@ no-`app` form — don't use it.)
 
 ## Security & platform guardrails
 
-These are enforced in `git/repo.ts` and must be preserved:
+Some guardrails are implemented in `git/repo.ts`; others must be added before
+shipping user-facing file comparison and restore flows.
 
-- **No argument injection:** refs and paths are passed as **discrete array
-  elements**, never interpolated; pathspecs are always preceded by `--`.
-- **`--no-index` is an arbitrary-file-read primitive** — `realpath`-confine both
-  inputs under the vault before using it for file-to-file compare.
-- **Reject leading-`-` refs** so a ref can't be parsed as a git option.
-- **Harden against malicious-repo RCE** via `.gitattributes`: run with
-  `-c diff.external=` and `--no-textconv`, and clear `GIT_EXTERNAL_DIFF` /
-  `GIT_PAGER` / `GIT_SSH*` in the environment for untrusted repos.
-- **macOS Electron PATH:** GUI-launched Obsidian does **not** inherit the shell
-  `$PATH`, so a Homebrew `git` at `/opt/homebrew/bin` is invisible. Expose a
-  configurable git-binary path setting (already in `settings.ts`).
-- `manifest.json` sets **`isDesktopOnly: true`** — `child_process` is unavailable
-  on mobile.
+Implemented:
+
+- **Discrete git arguments:** diff, blame, and restore commands pass refs and
+  paths as array elements rather than shell strings. Pathspec-style commands
+  put `--` before file paths.
+- **Basic diff hardening:** `Repo.forFile()` sets `diff.external=` and
+  `core.pager=cat` through simple-git config.
+- **macOS Electron PATH setting:** `settings.ts` exposes an optional git binary
+  path for GUI-launched Obsidian sessions that do not inherit the shell `$PATH`.
+- **Desktop-only manifest:** `manifest.json` sets `isDesktopOnly: true`, because
+  native git access is unavailable on Obsidian mobile.
+
+Still required:
+
+- **Constrain `--no-index`:** `Repo.diffFiles()` currently accepts arbitrary
+  absolute paths. Before exposing file-to-file comparison in the UI,
+  `realpath`-confine both inputs under the vault.
+- **Validate refs:** reject leading-`-` refs and invalid revision strings before
+  passing user-controlled refs into `diffRefs()`, `showAtRef()`,
+  `blamePorcelain()`, or `restore()`.
+- **Complete malicious-repo hardening:** add `--no-textconv` where applicable
+  and clear `GIT_EXTERNAL_DIFF`, `GIT_PAGER`, and `GIT_SSH*` in the child
+  process environment for untrusted repos.
+- **Review `showAtRef()`:** it currently builds a `ref:path` revision string.
+  Keep this behind ref/path validation before exposing restore or preview flows.
 
 ## Source layout
 
