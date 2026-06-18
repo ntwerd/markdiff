@@ -1,0 +1,38 @@
+{
+  "name": "markdiff",
+  "version": "0.1.0",
+  "description": "View git diffs of Markdown files as rendered Markdown — character-level, color-coded by change and author.",
+  "main": "main.js",
+  "type": "module",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+    "lint": "eslint .",
+    "version": "node version-bump.mjs && git add manifest.json versions.json"
+  },
+  "keywords": [
+    "obsidian",
+    "plugin",
+    "git",
+    "diff",
+    "markdown"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "obsidian": "latest",
+    "builtin-modules": "^5.0.0",
+    "esbuild": "0.25.5",
+    "typescript": "^5.8.3",
+    "@types/node": "^22.15.17",
+    "eslint": "^9.39.4",
+    "@eslint/js": "^9.39.4",
+    "typescript-eslint": "^8.59.1",
+    "eslint-plugin-obsidianmd": "^0.3.0",
+    "globals": "^17.6.0",
+    "jiti": "^2.6.1"
+  },
+  "dependencies": {
+    "diff": "^9.0.0",
+    "simple-git": "^3.36.0"
+  }
+}

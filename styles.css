@@ -1,0 +1,75 @@
+/* markdiff — diff rendering styles
+ * Colors are exposed as CSS custom properties so users can override them
+ * in their own snippets or theme.
+ */
+
+.markdiff-view {
+  --markdiff-add-bg: color-mix(in oklch, var(--color-green) 18%, transparent);
+  --markdiff-add-text: var(--color-green);
+  --markdiff-del-bg: color-mix(in oklch, var(--color-red) 16%, transparent);
+  --markdiff-del-text: var(--color-red);
+  --markdiff-context-opacity: 0.55;
+}
+
+/* Block-level change markers */
+.markdiff-block-add {
+  background: var(--markdiff-add-bg);
+  border-left: 3px solid var(--markdiff-add-text);
+  padding-left: var(--size-4-2);
+}
+
+.markdiff-block-del {
+  background: var(--markdiff-del-bg);
+  border-left: 3px solid var(--markdiff-del-text);
+  padding-left: var(--size-4-2);
+}
+
+/* Word-level inline spans inside rendered Markdown */
+.markdiff-add {
+  background: var(--markdiff-add-bg);
+  text-decoration: none;
+  border-radius: var(--radius-s);
+}
+
+.markdiff-del {
+  background: var(--markdiff-del-bg);
+  text-decoration: line-through;
+  text-decoration-color: var(--markdiff-del-text);
+  border-radius: var(--radius-s);
+}
+
+/* Unchanged context, dimmed */
+.markdiff-context {
+  opacity: var(--markdiff-context-opacity);
+}
+
+/* Per-author color is applied inline via a CSS variable set on the element:
+ * el.style.setProperty('--markdiff-author-color', color)
+ */
+.markdiff-author {
+  box-shadow: inset 2px 0 0 0 var(--markdiff-author-color, transparent);
+}
+
+/* Compare banner */
+.markdiff-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-2);
+  padding: var(--size-4-2) var(--size-4-3);
+  margin-bottom: var(--size-4-4);
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  font-size: var(--font-ui-small);
+}
+
+.markdiff-banner select,
+.markdiff-banner button {
+  font-size: var(--font-ui-small);
+}
+
+.markdiff-banner .markdiff-nav {
+  margin-left: auto;
+  display: flex;
+  gap: var(--size-4-1);
+}

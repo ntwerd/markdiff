@@ -1,0 +1,17 @@
+# build output
+main.js
+dist/
+
+# dependencies
+node_modules/
+
+# logs
+npm-debug.log*
+yarn-error.log
+
+# editor / OS
+.DS_Store
+*.log
+
+# obsidian local
+data.json

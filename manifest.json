@@ -1,0 +1,9 @@
+{
+  "id": "markdiff",
+  "name": "markdiff",
+  "version": "0.1.0",
+  "minAppVersion": "1.5.0",
+  "description": "View git diffs of Markdown files as rendered Markdown — character-level, color-coded by change type and author. Compare any two versions or two files, navigate changes, and restore a version.",
+  "author": "Nattawut",
+  "isDesktopOnly": true
+}
