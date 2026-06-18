@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { assertSafeRef, assertSafePath, hardenedEnv, UnsafeArgumentError } from "../src/git/repo";
+import { assertSafeRef, assertSafePath, hardenedEnv, UnsafeArgumentError } from "../src/git/security";
 
 describe("assertSafeRef", () => {
   it.each(["HEAD", "HEAD~1", "HEAD^", "feature/foo", "v1.2.3", "main", "refs/heads/main", "@{u}"])(

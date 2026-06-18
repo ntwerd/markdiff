@@ -116,9 +116,13 @@ type-checking.
 
 Unit tests (`npm test`) cover the pure, Obsidian-independent logic under
 `tests/`: diff parsing, character segmentation, whole-file expansion, blame
-parsing, the git ref/path/env security guards, and the author colour helper.
-The Obsidian/DOM-coupled view and render layers are exercised manually in the
-app rather than unit-tested.
+parsing, the git ref/path/env security guards, the author colour helper, the
+code-fence detector, and the repo→vault path mapper. `npm run test:coverage`
+enforces an 80% line/branch/function/statement gate over that unit-testable
+surface (`diff/`, `lib/`, `git/security.ts`). The Obsidian/DOM-coupled view
+and render layers and the `simple-git` subprocess wrapper require the app host
+or a live git repo, so they are exercised manually in-app rather than gated by
+unit coverage.
 
 ## Target architecture & data flow
 
@@ -249,7 +253,8 @@ src/
 ├── main.ts              plugin entry — commands, ribbon, view + settings wiring
 ├── settings.ts          settings model + parser + settings tab
 ├── git/
-│   └── repo.ts          simple-git wrapper + ref/path validation + hardening
+│   ├── repo.ts          simple-git wrapper (subprocess I/O; integration-tested)
+│   └── security.ts      ref/path validation + env hardening (pure, unit-tested)
 ├── diff/
 │   ├── types.ts         FileDiff / DiffHunk / DiffLine / TextSegment
 │   ├── segments.ts      granular diffChars segments + compact prefix/suffix split
