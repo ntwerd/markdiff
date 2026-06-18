@@ -19,7 +19,7 @@ import { expandDiffToWholeFile } from "../diff/wholeFile";
 
 export const MARKDIFF_VIEW_TYPE = "markdiff-view";
 
-type DiffDisplayMode = "hunks" | "whole";
+export type DiffDisplayMode = "hunks" | "whole";
 
 interface DiffViewState {
   /** Vault-relative path of the file under diff. */

@@ -209,11 +209,17 @@ Common values:
 
 ### 5.1. Open a diff for the active note
 
-You can invoke the **Toggle diff mode** command in three ways:
+You can invoke the **Toggle diff mode** command in four ways:
 
 1. The ribbon icon in the left sidebar (a git-compare icon).
-2. The command palette: `Ctrl/Cmd + P` → **markdiff: Toggle diff mode**.
-3. A custom hotkey — bind one under **Settings → Hotkeys**, search for
+2. A **header button** in the note's view header — the same area where
+   Obsidian's edit/read-mode toggle sits. This button only appears when the
+   active note is inside a Git repository. Click it to open (or close) the
+   diff view for the current note. When opened this way, the diff starts in
+  **Whole file** mode; use the banner dropdown or the diff-view header toggle
+  to switch to **Changed hunks** if needed.
+3. The command palette: `Ctrl/Cmd + P` → **markdiff: Toggle diff mode**.
+4. A custom hotkey — bind one under **Settings → Hotkeys**, search for
    "markdiff", and assign it to whatever key combo you like.
 
 If the active tab is a Markdown note, a new tab opens showing its diff.

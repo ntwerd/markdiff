@@ -1,7 +1,8 @@
-import { FileSystemAdapter, MarkdownView, Notice, Plugin, WorkspaceLeaf } from "obsidian";
+import { FileSystemAdapter, MarkdownView, Notice, Plugin, WorkspaceLeaf, setIcon } from "obsidian";
 import { DEFAULT_SETTINGS, MarkdiffSettings, MarkdiffSettingTab } from "./settings";
-import { DiffView, MARKDIFF_VIEW_TYPE } from "./view/DiffView";
+import { DiffView, MARKDIFF_VIEW_TYPE, type DiffDisplayMode } from "./view/DiffView";
 import { ChangedFilesModal } from "./ui/ChangedFilesModal";
+import { Repo } from "./git/repo";
 
 /**
  * markdiff — view git diffs of Markdown files as rendered Markdown.
@@ -15,6 +16,8 @@ import { ChangedFilesModal } from "./ui/ChangedFilesModal";
  */
 export default class MarkdiffPlugin extends Plugin {
   settings: MarkdiffSettings = DEFAULT_SETTINGS;
+  private headerButton: HTMLElement | null = null;
+  private refreshGeneration = 0;
 
   async onload(): Promise<void> {
     await this.loadSettings();
@@ -38,6 +41,17 @@ export default class MarkdiffPlugin extends Plugin {
       name: "Browse changed Markdown files",
       callback: () => new ChangedFilesModal(this.app, this).open(),
     });
+
+    this.registerEvent(
+      this.app.workspace.on("active-leaf-change", () => this.refreshHeaderButton()),
+    );
+    this.registerEvent(
+      this.app.workspace.on("file-open", () => this.refreshHeaderButton()),
+    );
+  }
+
+  onunload(): void {
+    this.removeHeaderButton();
   }
 
   async loadSettings(): Promise<void> {
@@ -63,8 +77,12 @@ export default class MarkdiffPlugin extends Plugin {
     return adapter instanceof FileSystemAdapter ? adapter.getBasePath() : null;
   }
 
-  /** Open (or focus) the inline diff view for a vault-relative Markdown path. */
-  async openDiff(filePath: string): Promise<void> {
+  /**
+   * Open (or focus) the inline diff view for a vault-relative Markdown path.
+   * When `displayMode` is omitted, the diff view uses its own default
+   * ("Changed hunks").
+   */
+  async openDiff(filePath: string, displayMode?: DiffDisplayMode): Promise<void> {
     const existing = this.findDiffLeaf(filePath);
     if (existing) {
       this.app.workspace.setActiveLeaf(existing, { focus: true });
@@ -74,11 +92,15 @@ export default class MarkdiffPlugin extends Plugin {
     await leaf.setViewState({
       type: MARKDIFF_VIEW_TYPE,
       active: true,
-      state: { filePath, baseRef: this.settings.defaultBaseRef },
+      state: {
+        filePath,
+        baseRef: this.settings.defaultBaseRef,
+        ...(displayMode ? { displayMode } : {}),
+      },
     });
   }
 
-  private toggleDiffMode(): void {
+  private toggleDiffMode(displayMode?: DiffDisplayMode): void {
     const file = this.app.workspace.getActiveViewOfType(MarkdownView)?.file;
     if (!file) {
       new Notice("Markdiff: open a Markdown note first.");
@@ -89,7 +111,7 @@ export default class MarkdiffPlugin extends Plugin {
       existing.detach();
       return;
     }
-    void this.openDiff(file.path);
+    void this.openDiff(file.path, displayMode);
   }
 
   private findDiffLeaf(filePath: string): WorkspaceLeaf | null {
@@ -97,6 +119,45 @@ export default class MarkdiffPlugin extends Plugin {
       if (leaf.view instanceof DiffView && leaf.view.filePath === filePath) return leaf;
     }
     return null;
+  }
+
+  /**
+   * Inject a "toggle diff" button into the active Markdown view's header
+   * (next to the edit/read-mode toggle), but only when the note lives inside
+   * a Git repository. Re-evaluated on every leaf/file change.
+   */
+  private async refreshHeaderButton(): Promise<void> {
+    this.removeHeaderButton();
+    const generation = ++this.refreshGeneration;
+
+    const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+    if (!view?.file) return;
+
+    const absPath = this.absPath(view.file.path);
+    if (!absPath) return;
+
+    const repo = await Repo.forFile(absPath, this.settings.gitBinaryPath);
+    // Abort if the user switched to a different view while we were checking.
+    if (generation !== this.refreshGeneration) return;
+    if (!repo) return;
+
+    const viewActions = view.containerEl.querySelector<HTMLElement>(".view-actions");
+    if (!viewActions) return;
+
+    this.headerButton = viewActions.createEl("a", {
+      cls: "view-action clickable-icon markdiff-header-toggle",
+      attr: { "aria-label": "Markdiff: Toggle diff mode" },
+    });
+    setIcon(this.headerButton, "git-compare");
+    this.headerButton.addEventListener("click", (evt) => {
+      evt.preventDefault();
+      this.toggleDiffMode("whole");
+    });
+  }
+
+  private removeHeaderButton(): void {
+    activeDocument.querySelectorAll(".markdiff-header-toggle").forEach((el) => el.remove());
+    this.headerButton = null;
   }
 }
 
