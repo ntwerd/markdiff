@@ -4,12 +4,14 @@ This document records the libraries chosen for markdiff and why, plus the data
 flow they are intended to implement. It is the reference for anyone extending
 the plugin.
 
-markdiff is currently an implementation scaffold. The git wrapper, diff parser,
-settings UI, command registration, and initial renderer exist. The inline note
-UI, changed-files browser, restore UI, blame-to-line author mapping, and
-character-span wrapping inside rendered Markdown are still TODOs. Compact
-partial-line grouping, such as the README example `H[-i there,-][+ello World!+]`,
-is also target UI behavior rather than current scaffold output.
+markdiff is functional end to end. The git wrapper, the unified-diff parser
+(with multi-line del/add pairing and character refinement), the inline diff view
+(compare banner, change navigation, restore), the changed-files browser,
+blame-to-line author colouring, and character-span wrapping inside rendered
+Markdown — including the compact partial-line grouping shown by the README
+example `H[-i there,-][+ello World!+]` — are all implemented. Remaining work is
+incremental polish (for example, surfacing two-file comparison in the UI and a
+richer ref picker) rather than missing pipeline stages.
 
 ## Goals recap
 
@@ -110,8 +112,9 @@ type-checking.
 
 ## Target architecture & data flow
 
-The source tree is shaped around this pipeline, but `src/main.ts` does not call
-the full flow yet. The registered commands still throw `Not implemented`.
+The source tree is shaped around this pipeline, and `src/main.ts` wires it end
+to end: **Toggle diff mode** opens the inline diff view for the active note, and
+**Browse changed Markdown files** opens the changed-files browser.
 
 ```
 active note ──▶ Repo.forFile()            (git/repo.ts)
@@ -122,32 +125,38 @@ active note ──▶ Repo.forFile()            (git/repo.ts)
                   ▼
             parseUnifiedDiff()             (diff/parse.ts)
                   │  parsePatch → hunks of add/del/context lines
-                  │  refineCharacters → diffChars per del/add pair
-                  │  TODO: compact partial-line grouping for the UI
+                  │  pairChanges → pair del/add runs + granular segments
                   ▼
             FileDiff[] (diff/types.ts)     one entry per changed file
-                  │  TODO: + per-line author from Repo.blamePorcelain()
+                  │  + per-line author from Repo.blamePorcelain()
+                  │    (diff/blame.ts, when "Colour by author" is on)
                   ▼
             renderFileDiff()               (render/renderDiff.ts)
                   │  called once per FileDiff
                   │  MarkdownRenderer.render() per line
-                  │  + per-author colour via colorForAuthor() when author set
-                  │  TODO: wrap character segments in .markdiff-add /
-                  │        .markdiff-del
+                  │  compact split on rendered text → wrap changed runs
+                  │    in .markdiff-del / .markdiff-add spans
+                  │  per-author colour via colorForAuthor()
                   ▼
-            inline in the note's reading view
+            inline in the diff view (workspace leaf)
 ```
 
-`renderFileDiff()` runs once per `FileDiff` and currently renders whole diff
-lines through `MarkdownRenderer.render()`, applying a per-author colour via
-`colorForAuthor()` whenever a line's `author` is set. It accepts parsed
-character segments, but the DOM post-processing that wraps those segments inside
-rendered Markdown has not been implemented yet.
+`renderFileDiff()` runs once per `FileDiff`, rendering each diff line through
+`MarkdownRenderer.render()` and applying a per-author colour via
+`colorForAuthor()` when a line's `author` is set. For a paired delete/add line it
+computes the compact common-prefix/suffix split (`splitCommon`) against the
+*rendered* text and wraps the changed runs in `.markdiff-del` / `.markdiff-add`
+spans. Diffing the rendered text — rather than the raw segments attached by the
+parser — is what lets the highlight land inside rendered headings, bold, links,
+and code spans, where markdown syntax characters no longer occupy the same
+offsets as the source.
 
-`parseUnifiedDiff()` returns one `FileDiff` per changed file in the unified
-diff, and currently refines only immediately adjacent delete/add line pairs. It
-does not yet pair full multi-line delete/add runs, so larger paragraph rewrites
-need a smarter line-pairing step before character normalization.
+`parseUnifiedDiff()` returns one `FileDiff` per changed file. `pairChanges`
+pairs each maximal run of deletions with the following run of additions and
+attaches granular `diffChars` segments to each pair; uneven runs leave the
+leftover lines standalone. Those segments are the structured model and the
+signal that a del/add pair is a partial-line edit — the renderer recomputes the
+compact split on rendered text for the actual highlight placement.
 
 ### Partial-line edit target
 
@@ -159,12 +168,13 @@ H[-i there,-][+ello World!+]
 ```
 
 This display keeps the unchanged prefix visible, strikes through removed text,
-and inserts added text at the same edit point. The current parser delegates to
-jsdiff's `diffChars`, which can preserve interior matching characters as
-separate unchanged segments. For the README example, `diffChars` keeps `H`, `e`,
-and `r` as unchanged segments. If the compact display remains the desired UI,
-add a normalization step after `diffChars` or in the renderer before DOM
-wrapping.
+and inserts added text at the same edit point. jsdiff's `diffChars` would keep
+interior matching characters as separate unchanged segments (for the README
+example it keeps `H`, `e`, and `r`), which is why the renderer instead uses
+`splitCommon`: it collapses everything between the common prefix and suffix into
+a single removed run and a single added run, producing the compact form above.
+The split runs on the rendered text and is surrogate-pair aware, so astral
+characters (emoji, some CJK) are never cut mid-glyph.
 
 ### Why the reading view, not CodeMirror decorations
 
@@ -184,49 +194,53 @@ no-`app` form — don't use it.)
 
 ## Security & platform guardrails
 
-Some guardrails are implemented in `git/repo.ts`; others must be added before
-shipping user-facing file comparison and restore flows.
+All guardrails below are implemented in `git/repo.ts` (with `settings.ts` and
+`manifest.json` for the platform pieces).
 
-Implemented:
-
-- **Discrete git arguments:** diff, blame, and restore commands pass refs and
-  paths as array elements rather than shell strings. Pathspec-style commands
+- **Discrete git arguments:** diff, blame, show, and restore commands pass refs
+  and paths as array elements rather than shell strings. Pathspec-style commands
   put `--` before file paths.
-- **Basic diff hardening:** `Repo.forFile()` sets `diff.external=` and
-  `core.pager=cat` through simple-git config.
+- **Ref and path validation:** `assertSafeRef()` rejects empty refs, refs that
+  start with `-` (option injection), and anything outside the revision grammar;
+  `assertSafePath()` guards the `ref:path` revision used by `showAtRef()` (which
+  has no `--` separator). Both run inside `diffRefs()`, `showAtRef()`,
+  `blamePorcelain()`, and `restore()`.
+- **Confined `--no-index`:** `Repo.diffFiles()` `realpath`-confines both inputs
+  under a caller-supplied directory (the vault root) and rejects paths that
+  escape it.
+- **Markdown-only changed files:** `Repo.changedMarkdownFiles()` filters git
+  status to `.md`/`.markdown`; the changed-files browser uses it.
+- **Malicious-repo hardening:** `Repo.forFile()` / `forDir()` set `diff.external=`
+  and `core.pager=cat` via config, pass `--no-textconv` on diff/show/blame, and
+  spawn git with a hardened environment that *removes* `GIT_EXTERNAL_DIFF`,
+  `GIT_SSH`, `GIT_SSH_COMMAND`, and `GIT_SSH_VARIANT` (setting them to empty
+  would make git try to exec an empty command) while forcing `GIT_PAGER=cat` and
+  `GIT_TERMINAL_PROMPT=0`.
 - **macOS Electron PATH setting:** `settings.ts` exposes an optional git binary
   path for GUI-launched Obsidian sessions that do not inherit the shell `$PATH`.
 - **Desktop-only manifest:** `manifest.json` sets `isDesktopOnly: true`, because
   native git access is unavailable on Obsidian mobile.
 
-Still required:
-
-- **Constrain `--no-index`:** `Repo.diffFiles()` currently accepts arbitrary
-  absolute paths. Before exposing file-to-file comparison in the UI,
-  `realpath`-confine both inputs under the vault.
-- **Filter changed files for the UI:** `Repo.changedFiles()` returns every git
-  status path. The changed-files browser described in `README.md` must filter
-  that list to Markdown notes before display.
-- **Validate refs:** reject leading-`-` refs and invalid revision strings before
-  passing user-controlled refs into `diffRefs()`, `showAtRef()`,
-  `blamePorcelain()`, or `restore()`.
-- **Complete malicious-repo hardening:** add `--no-textconv` where applicable
-  and clear `GIT_EXTERNAL_DIFF`, `GIT_PAGER`, and `GIT_SSH*` in the child
-  process environment for untrusted repos.
-- **Review `showAtRef()`:** it currently builds a `ref:path` revision string.
-  Keep this behind ref/path validation before exposing restore or preview flows.
+One follow-up remains before surfacing file-to-file comparison in the UI:
+`Repo.diffFiles()` is confinement-ready, but no command wires it up yet.
 
 ## Source layout
 
 ```
 src/
-├── main.ts              plugin entry — commands, ribbon, settings wiring
+├── main.ts              plugin entry — commands, ribbon, view + settings wiring
 ├── settings.ts          settings model + settings tab
 ├── git/
-│   └── repo.ts          simple-git wrapper (diff, blame, show, restore, status)
+│   └── repo.ts          simple-git wrapper + ref/path validation + hardening
 ├── diff/
 │   ├── types.ts         FileDiff / DiffHunk / DiffLine / TextSegment
-│   └── parse.ts         unified-diff parsing + character-level refinement
-└── render/
-    └── renderDiff.ts    render FileDiff lines via MarkdownRenderer (+ author colour)
+│   ├── segments.ts      granular diffChars segments + compact prefix/suffix split
+│   ├── parse.ts         unified-diff parsing + del/add run pairing
+│   └── blame.ts         --line-porcelain parsing + per-line author attach
+├── render/
+│   └── renderDiff.ts    render FileDiff lines + inline char spans + author colour
+├── view/
+│   └── DiffView.ts      inline diff view: banner, ref picker, nav, restore
+└── ui/
+    └── ChangedFilesModal.ts  changed Markdown files browser
 ```

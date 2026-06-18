@@ -1,79 +1,89 @@
-import { parsePatch, diffChars } from "diff";
-import { DiffHunk, DiffLine, FileDiff, TextSegment } from "./types";
+import { parsePatch, type StructuredPatch, type StructuredPatchHunk } from "diff";
+import { DiffHunk, DiffLine, FileDiff } from "./types";
+import { granularSegments } from "./segments";
 
 /**
- * Stage 1: parse a unified `git diff` string into structured hunks.
- * Stage 2 computes character-level segments for paired del/add runs.
+ * Parse a unified `git diff` string into one `FileDiff` per changed file.
+ * Each hunk's lines are classified add/del/context, then adjacent delete/add
+ * runs are paired and refined into character-level segments.
  */
 export function parseUnifiedDiff(unified: string): FileDiff[] {
-  const patches = parsePatch(unified);
+  return parsePatch(unified).map(toFileDiff);
+}
 
-  return patches.map((patch) => {
-    const hunks: DiffHunk[] = patch.hunks.map((h) => {
-      let oldLine = h.oldStart;
-      let newLine = h.newStart;
+function toFileDiff(patch: StructuredPatch): FileDiff {
+  return {
+    oldPath: stripPrefix(patch.oldFileName),
+    newPath: stripPrefix(patch.newFileName),
+    hunks: patch.hunks.map(toHunk),
+  };
+}
 
-      const lines: DiffLine[] = h.lines.map((raw) => {
-        const marker = raw[0];
-        const text = raw.slice(1);
+function toHunk(h: StructuredPatchHunk): DiffHunk {
+  let oldLine = h.oldStart;
+  let newLine = h.newStart;
+  const classified: DiffLine[] = [];
 
-        if (marker === "+") {
-          return { kind: "add", text, newLine: newLine++ } satisfies DiffLine;
-        }
-        if (marker === "-") {
-          return { kind: "del", text, oldLine: oldLine++ } satisfies DiffLine;
-        }
-        return {
-          kind: "context",
-          text,
-          oldLine: oldLine++,
-          newLine: newLine++,
-        } satisfies DiffLine;
-      });
+  for (const raw of h.lines) {
+    const marker = raw[0];
+    const text = raw.slice(1);
+    // jsdiff emits a "\ No newline at end of file" marker line; ignore it.
+    if (marker === "\\") continue;
 
-      return { oldStart: h.oldStart, newStart: h.newStart, lines };
-    });
+    if (marker === "+") {
+      classified.push({ kind: "add", text, newLine: newLine++ } satisfies DiffLine);
+    } else if (marker === "-") {
+      classified.push({ kind: "del", text, oldLine: oldLine++ } satisfies DiffLine);
+    } else {
+      classified.push({
+        kind: "context",
+        text,
+        oldLine: oldLine++,
+        newLine: newLine++,
+      } satisfies DiffLine);
+    }
+  }
 
-    return {
-      oldPath: stripPrefix(patch.oldFileName),
-      newPath: stripPrefix(patch.newFileName),
-      hunks: hunks.map(refineCharacters),
-    };
-  });
+  return { oldStart: h.oldStart, newStart: h.newStart, lines: pairChanges(classified) };
 }
 
 /**
- * Refine adjacent del/add runs in a hunk into character-level segments so a
- * typo fix highlights only the changed characters inside the rendered line.
+ * Pair each maximal run of consecutive deletions with the following run of
+ * consecutive additions, refining matched del/add pairs into character
+ * segments. Leftover deletions or additions (when the runs are uneven) are
+ * kept as standalone changed lines. Returns new line objects (no mutation).
  */
-function refineCharacters(hunk: DiffHunk): DiffHunk {
+function pairChanges(lines: DiffLine[]): DiffLine[] {
   const out: DiffLine[] = [];
-  const { lines } = hunk;
+  let i = 0;
 
-  for (let i = 0; i < lines.length; i++) {
-    const del = lines[i];
-    const add = lines[i + 1];
-
-    if (del.kind === "del" && add?.kind === "add") {
-      const changes = diffChars(del.text, add.text);
-      del.segments = changes
-        .filter((c) => !c.added)
-        .map((c) => toSegment(c.removed ? "del" : "same", c.value));
-      add.segments = changes
-        .filter((c) => !c.removed)
-        .map((c) => toSegment(c.added ? "add" : "same", c.value));
-      out.push(del, add);
-      i++; // consumed the paired add
+  while (i < lines.length) {
+    if (lines[i].kind !== "del") {
+      out.push(lines[i]);
+      i++;
       continue;
     }
-    out.push(del);
+
+    let delEnd = i;
+    while (delEnd < lines.length && lines[delEnd].kind === "del") delEnd++;
+    let addEnd = delEnd;
+    while (addEnd < lines.length && lines[addEnd].kind === "add") addEnd++;
+
+    const dels = lines.slice(i, delEnd);
+    const adds = lines.slice(delEnd, addEnd);
+    const pairs = Math.min(dels.length, adds.length);
+
+    for (let k = 0; k < pairs; k++) {
+      const seg = granularSegments(dels[k].text, adds[k].text);
+      out.push({ ...dels[k], segments: seg.del }, { ...adds[k], segments: seg.add });
+    }
+    for (let k = pairs; k < dels.length; k++) out.push(dels[k]);
+    for (let k = pairs; k < adds.length; k++) out.push(adds[k]);
+
+    i = addEnd;
   }
 
-  return { ...hunk, lines: out };
-}
-
-function toSegment(kind: TextSegment["kind"], value: string): TextSegment {
-  return { kind, value };
+  return out;
 }
 
 function stripPrefix(name: string | undefined): string {

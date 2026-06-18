@@ -1,7 +1,7 @@
 {
   "name": "markdiff",
   "version": "0.1.0",
-  "description": "Development scaffold for viewing git diffs of Markdown files as rendered Markdown.",
+  "description": "View git diffs of Markdown files as rendered Markdown — character-level, color-coded by change type and author.",
   "main": "main.js",
   "type": "module",
   "scripts": {

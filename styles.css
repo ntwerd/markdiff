@@ -11,17 +11,46 @@
   --markdiff-context-opacity: 0.55;
 }
 
+.markdiff-body {
+  padding: var(--size-4-2) 0;
+}
+
+/* One diff line: keep rendered Markdown blocks tight to a single row. */
+.markdiff-line {
+  padding: 0 var(--size-4-2);
+  border-left: 3px solid transparent;
+}
+
+.markdiff-line > :first-child {
+  margin-top: 0;
+}
+
+.markdiff-line > :last-child {
+  margin-bottom: 0;
+}
+
 /* Block-level change markers */
 .markdiff-block-add {
   background: var(--markdiff-add-bg);
-  border-left: 3px solid var(--markdiff-add-text);
-  padding-left: var(--size-4-2);
+  border-left-color: var(--markdiff-add-text);
 }
 
 .markdiff-block-del {
   background: var(--markdiff-del-bg);
-  border-left: 3px solid var(--markdiff-del-text);
-  padding-left: var(--size-4-2);
+  border-left-color: var(--markdiff-del-text);
+}
+
+/* A compact partial-line edit: removed + added text on one rendered line. */
+.markdiff-block-change {
+  background: color-mix(in oklch, var(--color-base-50, var(--text-muted)) 12%, transparent);
+  border-left-color: var(--text-muted);
+}
+
+/* The change the user navigated to. */
+.markdiff-current {
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: -2px;
+  border-radius: var(--radius-s);
 }
 
 /* Word-level inline spans inside rendered Markdown */
