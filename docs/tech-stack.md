@@ -6,9 +6,10 @@ the plugin.
 
 markdiff is functional end to end. The git wrapper, the unified-diff parser
 (with multi-line del/add pairing and character refinement), the inline diff view
-(compare banner, change navigation, restore), the changed-files browser,
-blame-to-line author colouring, and character-span wrapping inside rendered
-Markdown — including the compact partial-line grouping shown by the README
+(compare banner, display-mode selector, change navigation, restore), the
+whole-file diff expansion path, the changed-files browser, blame-to-line author
+colouring, and character-span wrapping inside rendered Markdown — including the
+compact partial-line grouping shown by the README
 example `H[-i there,-][+ello World!+]` — are all implemented. Remaining work is
 incremental polish (for example, surfacing two-file comparison in the UI and a
 richer ref picker) rather than missing pipeline stages.
@@ -22,6 +23,8 @@ Markdown**, with:
 - **character-level** diffs highlighted *inside* the rendered rich text;
 - compact partial-line edits that keep unchanged text readable while showing
   removed and added text inline at the edit point;
+- focused changed-hunk review and whole-file review that includes unchanged
+  lines outside git's hunk context;
 - color-coding by change type and by commit author;
 - navigation between changes and one-click restore of a version;
 - inline diff mode in the active note and a vault-wide changed-files list.
@@ -126,6 +129,7 @@ active note ──▶ Repo.forFile()            (git/repo.ts)
             parseUnifiedDiff()             (diff/parse.ts)
                   │  parsePatch → hunks of add/del/context lines
                   │  pairChanges → pair del/add runs + granular segments
+                  │  optional whole-file expansion from working-copy text
                   ▼
             FileDiff[] (diff/types.ts)     one entry per changed file
                   │  + per-line author from Repo.blamePorcelain()
@@ -157,6 +161,13 @@ attaches granular `diffChars` segments to each pair; uneven runs leave the
 leftover lines standalone. Those segments are the structured model and the
 signal that a del/add pair is a partial-line edit — the renderer recomputes the
 compact split on rendered text for the actual highlight placement.
+
+The diff view defaults to **Changed hunks**, which renders the parsed git hunks
+exactly as git emitted them. In **Whole file** mode, `expandDiffToWholeFile()`
+reads the working-copy note, fills every gap between hunks with dimmed context
+lines, and keeps deleted lines anchored at their original positions. This makes
+the rendered output a complete-file review while preserving the same
+`FileDiff`/`DiffLine` model used by the focused hunk view.
 
 ### Partial-line edit target
 
@@ -236,6 +247,7 @@ src/
 │   ├── types.ts         FileDiff / DiffHunk / DiffLine / TextSegment
 │   ├── segments.ts      granular diffChars segments + compact prefix/suffix split
 │   ├── parse.ts         unified-diff parsing + del/add run pairing
+│   ├── wholeFile.ts     expand parsed hunks into whole-file context
 │   └── blame.ts         --line-porcelain parsing + per-line author attach
 ├── render/
 │   └── renderDiff.ts    render FileDiff lines + inline char spans + author colour

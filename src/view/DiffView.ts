@@ -5,25 +5,33 @@ import {
   ItemView,
   Notice,
   WorkspaceLeaf,
+  setIcon,
   type IconName,
   type ViewStateResult,
 } from "obsidian";
+import { readFile } from "node:fs/promises";
 import type MarkdiffPlugin from "../main";
 import { Repo } from "../git/repo";
 import { parseUnifiedDiff } from "../diff/parse";
 import { attachAuthors, parseBlamePorcelain } from "../diff/blame";
 import { renderFileDiff } from "../render/renderDiff";
+import { expandDiffToWholeFile } from "../diff/wholeFile";
 
 export const MARKDIFF_VIEW_TYPE = "markdiff-view";
+
+type DiffDisplayMode = "hunks" | "whole";
 
 interface DiffViewState {
   /** Vault-relative path of the file under diff. */
   filePath: string;
   /** Ref compared against the working tree. */
   baseRef: string;
+  /** Whether to show only git hunks or the full file around them. */
+  displayMode: DiffDisplayMode;
 }
 
 const RESTORE_CONFIRM_MS = 4000;
+const DEFAULT_DISPLAY_MODE: DiffDisplayMode = "hunks";
 
 /**
  * Inline diff mode: a workspace leaf that renders the git diff of one Markdown
@@ -37,13 +45,18 @@ export class DiffView extends ItemView {
   private changeEls: HTMLElement[] = [];
   private changeIndex = -1;
   private restoreTimer: number | null = null;
+  private modeActionEl: HTMLElement | null = null;
 
   constructor(
     leaf: WorkspaceLeaf,
     private readonly plugin: MarkdiffPlugin,
   ) {
     super(leaf);
-    this.state = { filePath: "", baseRef: plugin.settings.defaultBaseRef };
+    this.state = {
+      filePath: "",
+      baseRef: plugin.settings.defaultBaseRef,
+      displayMode: DEFAULT_DISPLAY_MODE,
+    };
   }
 
   getViewType(): string {
@@ -64,7 +77,11 @@ export class DiffView extends ItemView {
   }
 
   override getState(): Record<string, unknown> {
-    return { filePath: this.state.filePath, baseRef: this.state.baseRef };
+    return {
+      filePath: this.state.filePath,
+      baseRef: this.state.baseRef,
+      displayMode: this.state.displayMode,
+    };
   }
 
   override async setState(state: unknown, result: ViewStateResult): Promise<void> {
@@ -74,18 +91,27 @@ export class DiffView extends ItemView {
         typeof state.baseRef === "string" && state.baseRef.length > 0
           ? state.baseRef
           : this.plugin.settings.defaultBaseRef;
-      this.state = { filePath, baseRef };
+      const displayMode =
+        typeof state.displayMode === "string" && isDiffDisplayMode(state.displayMode)
+          ? state.displayMode
+          : this.state.displayMode;
+      this.state = { filePath, baseRef, displayMode };
     }
     await super.setState(state, result);
     await this.rebuild();
   }
 
   override async onOpen(): Promise<void> {
+    this.modeActionEl = this.addAction("list", "Show whole file", () => {
+      void this.setDisplayMode(this.state.displayMode === "hunks" ? "whole" : "hunks");
+    });
+    this.updateModeAction();
     await this.rebuild();
   }
 
   override async onClose(): Promise<void> {
     this.clearRestoreTimer();
+    this.modeActionEl = null;
     if (this.renderComponent) {
       this.removeChild(this.renderComponent);
       this.renderComponent = null;
@@ -103,6 +129,7 @@ export class DiffView extends ItemView {
   private async rebuild(): Promise<void> {
     const { contentEl } = this;
     this.clearRestoreTimer();
+    this.updateModeAction();
     contentEl.empty();
     if (this.renderComponent) this.removeChild(this.renderComponent);
     this.renderComponent = new Component();
@@ -133,6 +160,16 @@ export class DiffView extends ItemView {
       this.app.workspace.requestSaveLayout();
       this.refreshBannerText(banner);
       await this.renderDiff();
+    });
+
+    const modeDropdown = new DropdownComponent(banner);
+    modeDropdown.addOption("hunks", "Changed hunks");
+    modeDropdown.addOption("whole", "Whole file");
+    modeDropdown.setValue(this.state.displayMode);
+    modeDropdown.selectEl.setAttribute("aria-label", "Diff display mode");
+    modeDropdown.onChange(async (value) => {
+      if (!isDiffDisplayMode(value)) return;
+      await this.setDisplayMode(value);
     });
 
     this.buildRestoreButton(banner);
@@ -180,6 +217,24 @@ export class DiffView extends ItemView {
     if (path) path.setText(this.state.filePath);
   }
 
+  private async setDisplayMode(mode: DiffDisplayMode): Promise<void> {
+    this.state = { ...this.state, displayMode: mode };
+    this.app.workspace.requestSaveLayout();
+    this.updateModeAction();
+    await this.renderDiff();
+  }
+
+  private updateModeAction(): void {
+    if (!this.modeActionEl) return;
+    if (this.state.displayMode === "whole") {
+      setIcon(this.modeActionEl, "file-text");
+      this.modeActionEl.setAttribute("aria-label", "Show changed hunks");
+    } else {
+      setIcon(this.modeActionEl, "list");
+      this.modeActionEl.setAttribute("aria-label", "Show whole file");
+    }
+  }
+
   private baseRefOptions(): string[] {
     return [...new Set([this.plugin.settings.defaultBaseRef, "HEAD", "HEAD~1", "HEAD~3"])].filter(
       (ref) => ref.length > 0,
@@ -221,6 +276,10 @@ export class DiffView extends ItemView {
       if (!diff) {
         body.createEl("p", { text: "No diff to display." });
         return;
+      }
+
+      if (this.state.displayMode === "whole") {
+        diff = expandDiffToWholeFile(diff, await readFile(absPath, "utf8"));
       }
 
       if (this.plugin.settings.colorByAuthor) {
@@ -280,6 +339,10 @@ export class DiffView extends ItemView {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function isDiffDisplayMode(value: string): value is DiffDisplayMode {
+  return value === "hunks" || value === "whole";
 }
 
 function errorMessage(err: unknown): string {

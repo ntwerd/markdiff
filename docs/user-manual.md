@@ -231,9 +231,17 @@ At the top of the diff view you will see:
 - The vault-relative path of the file.
 - A dropdown to pick the base ref (`HEAD`, `HEAD~1`, `HEAD~3`, or your
   custom default). Changes are recomputed when you change the ref.
+- A display dropdown. **Changed hunks** shows git's changed regions and nearby
+  context; **Whole file** includes every unchanged line in the working-copy note.
 - A **Restore \<ref\>** button. See [section 5.5](#55-restore-a-file).
 - Up / down arrow buttons to navigate between changes. See
   [section 5.4](#54-navigate-between-changes).
+
+In addition to the banner dropdown, a **toggle button** sits in the diff
+view's header (top-right, next to where Obsidian's edit/read-mode toggle
+appears). Click it to switch between **Changed hunks** and **Whole file**
+without opening the dropdown. The icon reflects the current mode: a list
+icon for changed hunks, a file icon for whole file.
 
 ### 5.3. Understand the highlighting
 
@@ -245,7 +253,7 @@ markdiff tries to be unobtrusive while making changes obvious.
 | Red background, strikethrough text | The whole line is removed. |
 | Strikethrough text on a line (red) | Inline removed text — the rest of the line is unchanged. |
 | Highlighted text on a line (green) | Inline added text — the rest of the line is unchanged. |
-| Dimmed text | Unchanged context (kept for orientation). |
+| Dimmed text | Unchanged context. In Whole file mode, this includes unchanged lines outside git's changed hunks. |
 | Coloured bar on the left edge | The author of the last commit that touched this line (only when "Colour-code by author" is on). |
 | Blue outline | The change you are currently navigated to. |
 
@@ -338,8 +346,10 @@ diff leaf when invoked on a file that already has a diff open.
 ### 6.1. Reviewing uncommitted edits
 
 Leave the default base ref set to `HEAD` and use the ribbon icon. The
-diff view shows your working-copy edits against the last commit, in
-rendered Markdown, with the rest of the note dimmed as context.
+diff view shows your working-copy edits against the last commit in
+rendered Markdown. Use **Changed hunks** for a focused review, or switch
+to **Whole file** when you want the unchanged parts of the note shown as
+dimmed context.
 
 ### 6.2. Reviewing a specific commit
 

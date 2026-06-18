@@ -10,9 +10,11 @@ code blocks.
 
 markdiff is functional: **Toggle diff mode** opens an inline diff view for the
 active note — rendered Markdown with character-level highlights, change
-navigation, per-author colouring, and one-click restore — and **Browse changed
-Markdown files** lists the vault's changed notes and opens any of them in the
-diff view.
+navigation, per-author colouring, one-click restore, and two display modes.
+**Changed hunks** keeps review focused on git's changed regions. **Whole file**
+renders the complete working-copy note, including unchanged lines outside the
+diff hunks. **Browse changed Markdown files** lists the vault's changed notes
+and opens any of them in the diff view.
 
 The example below shows how markdiff renders a partial-line edit. The raw git
 diff changes `Hi there,` to `Hello World!`; in the diff view the unchanged prefix
@@ -62,6 +64,8 @@ Implemented:
 - Rendered Markdown diffs with character-level highlights inside the rendered
   text (headings, bold, links, tables, code spans).
 - Compact partial-line grouping at the edit point.
+- Display modes for changed hunks and whole-file diffs that include unchanged
+  lines.
 - Inline diff view with a compare-ref banner, change navigation, and restore.
 - A changed-files browser for the vault's changed Markdown notes.
 - Colour coding by change type and by commit author (via `git blame`).
@@ -115,13 +119,15 @@ Restart Obsidian or reload plugins, then enable **markdiff** under
    in a new tab.
 3. In the compare banner, pick the base ref to compare against the working copy
    (defaults to your configured base ref).
-4. Review the formatted Markdown changes, with removed and added text highlighted
+4. Pick **Changed hunks** for a focused review, or **Whole file** to include every
+   unchanged line in the note.
+5. Review the formatted Markdown changes, with removed and added text highlighted
    inline at each edit point.
-5. Use the banner's up/down buttons to jump between changes, or **Restore** to
+6. Use the banner's up/down buttons to jump between changes, or **Restore** to
    roll the file back to the selected ref (click twice to confirm).
-6. Run **markdiff: Browse changed Markdown files** to see every changed note in
+7. Run **markdiff: Browse changed Markdown files** to see every changed note in
    the vault and open any of them in the diff view.
-7. Close the diff tab (or toggle the command again) to exit diff mode.
+8. Close the diff tab (or toggle the command again) to exit diff mode.
 
 Tip: bind the commands to hotkeys under **Settings → Hotkeys**.
 
@@ -151,9 +157,11 @@ architecture, data flow, and conventions.
    working tree (`Repo.diffFiles()` runs a vault-confined `git diff --no-index`).
 3. `parseUnifiedDiff()` parses the unified diff into added, removed, and
    unchanged lines and pairs delete/add runs into character segments.
-4. When colour-by-author is on, `git blame --line-porcelain` is parsed and
+4. In **Whole file** mode, `expandDiffToWholeFile()` reads the working-copy note
+   and fills the gaps between git hunks with unchanged context lines.
+5. When colour-by-author is on, `git blame --line-porcelain` is parsed and
    mapped onto each line.
-5. `renderFileDiff()` renders each line through Obsidian's `MarkdownRenderer` and
+6. `renderFileDiff()` renders each line through Obsidian's `MarkdownRenderer` and
    wraps the changed characters in styled spans inside the rendered DOM.
 
 `DiffView` hosts that pipeline in a workspace leaf with the compare banner,
