@@ -9,13 +9,11 @@ import {
   type IconName,
   type ViewStateResult,
 } from "obsidian";
-import { readFile } from "node:fs/promises";
 import type MarkdiffPlugin from "../main";
 import { Repo } from "../git/repo";
-import { parseUnifiedDiff } from "../diff/parse";
-import { attachAuthors, parseBlamePorcelain } from "../diff/blame";
+import { loadFileDiff } from "../diff/pipeline";
 import { renderFileDiff } from "../render/renderDiff";
-import { expandDiffToWholeFile } from "../diff/wholeFile";
+import { errorMessage, isRecord } from "../lib/util";
 
 export const MARKDIFF_VIEW_TYPE = "markdiff-view";
 
@@ -263,46 +261,30 @@ export class DiffView extends ItemView {
       }
 
       const relPath = repo.relPathFor(absPath);
-      const unified = await repo.diffRefs(relPath, this.state.baseRef);
-      if (!unified.trim()) {
+      const result = await loadFileDiff(repo, relPath, absPath, {
+        baseRef: this.state.baseRef,
+        wholeFile: this.state.displayMode === "whole",
+        colorByAuthor: this.plugin.settings.colorByAuthor,
+      });
+
+      if (result.status === "no-changes") {
         body.createEl("p", {
           text: `No changes between ${this.state.baseRef} and the working tree.`,
         });
         return;
       }
-
-      const fileDiffs = parseUnifiedDiff(unified);
-      let diff = fileDiffs.find((d) => d.newPath === relPath || d.oldPath === relPath) ?? fileDiffs[0];
-      if (!diff) {
-        body.createEl("p", { text: "No diff to display." });
+      if (result.status === "error") {
+        body.createEl("p", { text: result.message });
         return;
       }
 
-      if (this.state.displayMode === "whole") {
-        diff = expandDiffToWholeFile(diff, await readFile(absPath, "utf8"));
-      }
-
-      if (this.plugin.settings.colorByAuthor) {
-        diff = await this.withAuthors(repo, relPath, diff);
-      }
-
-      await renderFileDiff(this.app, diff, body, this.state.filePath, component, {
+      await renderFileDiff(this.app, result.diff, body, this.state.filePath, component, {
         colorByAuthor: this.plugin.settings.colorByAuthor,
       });
       this.changeEls = Array.from(body.querySelectorAll<HTMLElement>(".markdiff-change"));
     } catch (err) {
       body.empty();
       body.createEl("p", { text: `Markdiff: ${errorMessage(err)}` });
-    }
-  }
-
-  private async withAuthors(repo: Repo, relPath: string, diff: ReturnType<typeof parseUnifiedDiff>[number]) {
-    try {
-      const blame = await repo.blamePorcelain(relPath);
-      return attachAuthors(diff, parseBlamePorcelain(blame));
-    } catch {
-      // Blame fails for untracked/unborn files; render without author colour.
-      return diff;
     }
   }
 
@@ -337,14 +319,6 @@ export class DiffView extends ItemView {
   }
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
 function isDiffDisplayMode(value: string): value is DiffDisplayMode {
   return value === "hunks" || value === "whole";
-}
-
-function errorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
 }

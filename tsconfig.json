@@ -16,5 +16,5 @@
     "importHelpers": false,
     "lib": ["ES2021", "DOM", "DOM.Iterable"]
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts", "tests/**/*.ts"]
 }

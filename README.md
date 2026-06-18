@@ -140,6 +140,7 @@ For implementation details and current TODOs, see
 npm install      # install dependencies
 npm run dev      # esbuild watch; rebuilds main.js on every save
 npm run build    # type-check + production bundle
+npm test         # unit tests for the pure diff logic (vitest)
 npm run lint     # ESLint
 ```
 
@@ -154,7 +155,7 @@ architecture, data flow, and conventions.
 
 1. `Repo.forFile()` finds the git repository root for a file.
 2. `Repo.diffRefs()` runs `git diff --no-textconv <ref> -- <path>` against the
-   working tree (`Repo.diffFiles()` runs a vault-confined `git diff --no-index`).
+   working tree.
 3. `parseUnifiedDiff()` parses the unified diff into added, removed, and
    unchanged lines and pairs delete/add runs into character segments.
 4. In **Whole file** mode, `expandDiffToWholeFile()` reads the working-copy note
@@ -164,8 +165,10 @@ architecture, data flow, and conventions.
 6. `renderFileDiff()` renders each line through Obsidian's `MarkdownRenderer` and
    wraps the changed characters in styled spans inside the rendered DOM.
 
-`DiffView` hosts that pipeline in a workspace leaf with the compare banner,
-change navigation, and restore; `ChangedFilesModal` lists the changed notes.
+`loadFileDiff()` (in `src/diff/pipeline.ts`) orchestrates steps 2–5 into one
+call; `DiffView` invokes it and hosts the result in a workspace leaf with the
+compare banner, change navigation, and restore. `ChangedFilesModal` lists the
+changed notes.
 
 ## License
 

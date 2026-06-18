@@ -1,5 +1,5 @@
 import { FileSystemAdapter, MarkdownView, Notice, Plugin, WorkspaceLeaf, setIcon } from "obsidian";
-import { DEFAULT_SETTINGS, MarkdiffSettings, MarkdiffSettingTab } from "./settings";
+import { DEFAULT_SETTINGS, MarkdiffSettings, MarkdiffSettingTab, parseMarkdiffSettings } from "./settings";
 import { DiffView, MARKDIFF_VIEW_TYPE, type DiffDisplayMode } from "./view/DiffView";
 import { ChangedFilesModal } from "./ui/ChangedFilesModal";
 import { Repo } from "./git/repo";
@@ -55,10 +55,7 @@ export default class MarkdiffPlugin extends Plugin {
   }
 
   async loadSettings(): Promise<void> {
-    this.settings = {
-      ...DEFAULT_SETTINGS,
-      ...parseSettings(await this.loadData()),
-    };
+    this.settings = parseMarkdiffSettings(await this.loadData());
   }
 
   async saveSettings(): Promise<void> {
@@ -159,24 +156,4 @@ export default class MarkdiffPlugin extends Plugin {
     activeDocument.querySelectorAll(".markdiff-header-toggle").forEach((el) => el.remove());
     this.headerButton = null;
   }
-}
-
-function parseSettings(value: unknown): Partial<MarkdiffSettings> {
-  if (!isRecord(value)) return {};
-
-  const settings: Partial<MarkdiffSettings> = {};
-  if (typeof value.defaultBaseRef === "string") {
-    settings.defaultBaseRef = value.defaultBaseRef;
-  }
-  if (typeof value.colorByAuthor === "boolean") {
-    settings.colorByAuthor = value.colorByAuthor;
-  }
-  if (typeof value.gitBinaryPath === "string") {
-    settings.gitBinaryPath = value.gitBinaryPath;
-  }
-  return settings;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
 }

@@ -103,6 +103,7 @@ versions.
 | `eslint` + `@eslint/js` + `typescript-eslint` | `^9.39.4` / `^9.39.4` / `^8.59.1` | Lint (flat config) |
 | `eslint-plugin-obsidianmd` | `^0.3.0` | Obsidian submission-readiness rules |
 | `globals`, `jiti` | `^17.6.0`, `^2.6.1` | ESLint flat-config support |
+| `vitest` | — | Unit-test runner for the pure diff logic |
 
 `esbuild.config.mjs` writes the bundle to `main.js` at the repository root. The
 `version` npm script runs `version-bump.mjs` to keep `manifest.json` and
@@ -112,6 +113,12 @@ versions.
 `package.json` runs `tsc -noEmit` before the production bundle. `tsconfig.json`
 sets `skipLibCheck` so external Obsidian API typings do not block source
 type-checking.
+
+Unit tests (`npm test`) cover the pure, Obsidian-independent logic under
+`tests/`: diff parsing, character segmentation, whole-file expansion, blame
+parsing, the git ref/path/env security guards, and the author colour helper.
+The Obsidian/DOM-coupled view and render layers are exercised manually in the
+app rather than unit-tested.
 
 ## Target architecture & data flow
 
@@ -240,7 +247,7 @@ One follow-up remains before surfacing file-to-file comparison in the UI:
 ```
 src/
 ├── main.ts              plugin entry — commands, ribbon, view + settings wiring
-├── settings.ts          settings model + settings tab
+├── settings.ts          settings model + parser + settings tab
 ├── git/
 │   └── repo.ts          simple-git wrapper + ref/path validation + hardening
 ├── diff/
@@ -248,11 +255,16 @@ src/
 │   ├── segments.ts      granular diffChars segments + compact prefix/suffix split
 │   ├── parse.ts         unified-diff parsing + del/add run pairing
 │   ├── wholeFile.ts     expand parsed hunks into whole-file context
-│   └── blame.ts         --line-porcelain parsing + per-line author attach
+│   ├── blame.ts         --line-porcelain parsing + per-line author attach
+│   └── pipeline.ts      orchestrate parse → expand → blame into one FileDiff load
 ├── render/
-│   └── renderDiff.ts    render FileDiff lines + inline char spans + author colour
+│   └── renderDiff.ts    render FileDiff lines + inline char spans
+├── lib/
+│   ├── util.ts          shared helpers (errorMessage, isRecord)
+│   └── color.ts         deterministic per-author colour
 ├── view/
 │   └── DiffView.ts      inline diff view: banner, ref picker, nav, restore
 └── ui/
     └── ChangedFilesModal.ts  changed Markdown files browser
 ```
+

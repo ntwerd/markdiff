@@ -3,6 +3,7 @@ import { join, relative, sep } from "node:path";
 import { realpath } from "node:fs/promises";
 import type MarkdiffPlugin from "../main";
 import { Repo } from "../git/repo";
+import { errorMessage } from "../lib/util";
 
 /**
  * Modal listing the vault's changed Markdown files. Selecting one opens it in
@@ -83,8 +84,4 @@ function toVaultPaths(repoRelPaths: string[], repoRoot: string, vaultRoot: strin
     if (vaultRel.length > 0 && !vaultRel.startsWith("../")) out.push(vaultRel);
   }
   return out.sort((a, b) => a.localeCompare(b));
-}
-
-function errorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
 }

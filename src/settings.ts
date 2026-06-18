@@ -1,4 +1,5 @@
 import { App, PluginSettingTab, Setting } from "obsidian";
+import { isRecord } from "./lib/util";
 import type MarkdiffPlugin from "./main";
 
 export interface MarkdiffSettings {
@@ -19,6 +20,28 @@ export const DEFAULT_SETTINGS: MarkdiffSettings = {
   colorByAuthor: true,
   gitBinaryPath: "",
 };
+
+/**
+ * Parse persisted plugin data (an unknown blob from `loadData`) into a fully
+ * typed `MarkdiffSettings`, defaulting any missing or malformed fields. Only
+ * known fields with the expected type are kept; everything else falls back to
+ * the default.
+ */
+export function parseMarkdiffSettings(value: unknown): MarkdiffSettings {
+  if (!isRecord(value)) return { ...DEFAULT_SETTINGS };
+
+  const settings: MarkdiffSettings = { ...DEFAULT_SETTINGS };
+  if (typeof value.defaultBaseRef === "string") {
+    settings.defaultBaseRef = value.defaultBaseRef;
+  }
+  if (typeof value.colorByAuthor === "boolean") {
+    settings.colorByAuthor = value.colorByAuthor;
+  }
+  if (typeof value.gitBinaryPath === "string") {
+    settings.gitBinaryPath = value.gitBinaryPath;
+  }
+  return settings;
+}
 
 export class MarkdiffSettingTab extends PluginSettingTab {
   plugin: MarkdiffPlugin;

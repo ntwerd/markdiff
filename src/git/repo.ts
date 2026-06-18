@@ -1,6 +1,5 @@
 import { simpleGit, SimpleGit, SimpleGitOptions } from "simple-git";
 import { dirname, relative, sep } from "node:path";
-import { realpath } from "node:fs/promises";
 import process from "node:process";
 
 /** Thrown when a user-controlled ref or path fails validation. */
@@ -82,14 +81,20 @@ const FLAGGED_GIT_ENV_KEYS: ReadonlySet<string> = new Set([
   "ssh_askpass",
 ]);
 
-function hardenedEnv(): Record<string, string | undefined> {
-  const env: Record<string, string | undefined> = {};
-  for (const [key, value] of Object.entries(process.env)) {
+/**
+ * Build the child-process environment for git, with every guard-flagged key
+ * deleted and `GIT_TERMINAL_PROMPT` forced off. Accepts an optional `env`
+ * (defaults to the live `process.env`) so the filtering is unit-testable
+ * without touching the real environment.
+ */
+export function hardenedEnv(env: NodeJS.ProcessEnv = process.env): Record<string, string | undefined> {
+  const out: Record<string, string | undefined> = {};
+  for (const [key, value] of Object.entries(env)) {
     if (FLAGGED_GIT_ENV_KEYS.has(key.toLowerCase())) continue;
-    env[key] = value;
+    out[key] = value;
   }
-  env.GIT_TERMINAL_PROMPT = "0";
-  return env;
+  out.GIT_TERMINAL_PROMPT = "0";
+  return out;
 }
 
 /**
@@ -167,31 +172,6 @@ export class Repo {
     return this.git.diff(args);
   }
 
-  /**
-   * Unified diff between two arbitrary files (no repo membership required).
-   * Both inputs are `realpath`-confined under `confineDir` (the vault root) to
-   * stop `--no-index` from reading files outside the vault.
-   */
-  async diffFiles(absFileA: string, absFileB: string, confineDir: string): Promise<string> {
-    const realA = await confineUnder(absFileA, confineDir);
-    const realB = await confineUnder(absFileB, confineDir);
-    // --no-index exits non-zero when the files differ; swallow that.
-    try {
-      return await this.git.diff(["--no-index", "--no-ext-diff", "--no-textconv", "--", realA, realB]);
-    } catch (err: unknown) {
-      const e = err as { git?: { stdout?: string } };
-      if (e.git?.stdout) return e.git.stdout;
-      throw err;
-    }
-  }
-
-  /** Read a file's contents at a given ref without touching the working tree. */
-  async showAtRef(relPath: string, ref: string): Promise<string> {
-    const r = assertSafeRef(ref);
-    const path = assertSafePath(relPath);
-    return this.git.raw(["show", "--no-textconv", `${r}:${path}`]);
-  }
-
   /** Per-line author attribution for color-by-author. */
   async blamePorcelain(relPath: string, ref?: string): Promise<string> {
     const path = assertSafePath(relPath);
@@ -219,17 +199,4 @@ export class Repo {
     const files = await this.changedFiles();
     return files.filter((p) => /\.(md|markdown)$/i.test(p));
   }
-}
-
-/**
- * Resolve `absPath` and require it to live inside `confineDir`. Throws
- * UnsafeArgumentError if the resolved real path escapes the confinement root.
- */
-async function confineUnder(absPath: string, confineDir: string): Promise<string> {
-  const realRoot = await realpath(confineDir);
-  const real = await realpath(absPath);
-  if (real !== realRoot && !real.startsWith(realRoot + sep)) {
-    throw new UnsafeArgumentError(`Path escapes the vault: ${JSON.stringify(absPath)}`);
-  }
-  return real;
 }

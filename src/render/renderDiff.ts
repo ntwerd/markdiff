@@ -1,6 +1,7 @@
 import { App, Component, MarkdownRenderer } from "obsidian";
 import { DiffHunk, DiffLine, FileDiff } from "../diff/types";
 import { splitCommon } from "../diff/segments";
+import { colorForAuthor } from "../lib/color";
 
 export interface RenderOptions {
   /** Tint each line with its commit author's colour when an author is set. */
@@ -45,15 +46,116 @@ async function renderHunk(
   options: RenderOptions,
 ): Promise<void> {
   const { lines } = hunk;
-  for (let i = 0; i < lines.length; i++) {
+  let i = 0;
+  while (i < lines.length) {
     const line = lines[i];
     const next = lines[i + 1];
+
+    // Fenced code blocks (``` or ~~~) span multiple lines. Render the whole
+    // block as one Markdown unit so multi-line constructs like Mermaid
+    // diagrams parse correctly instead of triggering "No diagram type
+    // detected" errors from per-line rendering.
+    const fence = detectFence(line.text);
+    if (fence) {
+      const block: DiffLine[] = [line];
+      let j = i + 1;
+      while (j < lines.length) {
+        block.push(lines[j]);
+        if (isClosingFence(lines[j].text, fence)) {
+          j++;
+          // Consume consecutive closing fences (interleaved del/add pairs
+          // in a modified code block produce two closing-fence lines).
+          while (j < lines.length && isClosingFence(lines[j].text, fence)) {
+            block.push(lines[j]);
+            j++;
+          }
+          break;
+        }
+        j++;
+      }
+      await renderCodeBlock(app, block, containerEl, sourcePath, component, options);
+      i = j;
+      continue;
+    }
+
+    // If the next line opens a code fence, don't pair the current line with
+    // it — render it standalone so the fence is handled on the next iteration.
+    if (next && detectFence(next.text)) {
+      await renderStandaloneLine(app, line, containerEl, sourcePath, component, options);
+      i++;
+      continue;
+    }
+
     if (line.kind === "del" && line.segments && next?.kind === "add" && next.segments) {
       await renderChangedPair(app, line, next, containerEl, sourcePath, component, options);
-      i++; // consumed the paired add line
+      i += 2;
       continue;
     }
     await renderStandaloneLine(app, line, containerEl, sourcePath, component, options);
+    i++;
+  }
+}
+
+const FENCE_RE = /^(`{3,}|~{3,})/;
+
+interface FenceInfo {
+  char: string;
+  length: number;
+}
+
+function detectFence(text: string): FenceInfo | null {
+  const match = text.match(FENCE_RE);
+  if (!match) return null;
+  const fence = match[1];
+  return { char: fence[0], length: fence.length };
+}
+
+function isClosingFence(text: string, opening: FenceInfo): boolean {
+  return new RegExp(`^${opening.char}{${opening.length},}\\s*$`).test(text);
+}
+
+async function renderCodeBlock(
+  app: App,
+  blockLines: DiffLine[],
+  containerEl: HTMLElement,
+  sourcePath: string,
+  component: Component,
+  options: RenderOptions,
+): Promise<void> {
+  const kinds = new Set(blockLines.map((l) => l.kind));
+
+  if (kinds.size === 1) {
+    const kind = blockLines[0].kind;
+    const blockClass =
+      kind === "add"
+        ? "markdiff-block-add"
+        : kind === "del"
+          ? "markdiff-block-del"
+          : "markdiff-context";
+    const markdown = blockLines.map((l) => l.text).join("\n");
+    const lineEl = containerEl.createDiv({ cls: `markdiff-line ${blockClass}` });
+    if (kind !== "context") lineEl.addClass("markdiff-change");
+    const authorLine = blockLines.find((l) => l.author);
+    if (authorLine) applyAuthor(lineEl, authorLine, options);
+    await renderInline(app, markdown || EMPTY_LINE, lineEl, sourcePath, component);
+    return;
+  }
+
+  // Mixed kinds (modified code block): separate into old (del + context) and
+  // new (add + context) so each side is a valid, complete code block.
+  const oldLines = blockLines.filter((l) => l.kind !== "add");
+  const newLines = blockLines.filter((l) => l.kind !== "del");
+
+  for (const [lines, blockClass] of [
+    [oldLines, "markdiff-block-del"],
+    [newLines, "markdiff-block-add"],
+  ] as const) {
+    if (lines.length === 0) continue;
+    const markdown = lines.map((l) => l.text).join("\n");
+    const lineEl = containerEl.createDiv({ cls: `markdiff-line ${blockClass} markdiff-change` });
+    const authorLine = lines.find((l) => l.author);
+    if (authorLine) applyAuthor(lineEl, authorLine, options);
+    await renderInline(app, markdown || EMPTY_LINE, lineEl, sourcePath, component);
   }
 }
 
@@ -228,15 +330,4 @@ function insertSpanAt(root: HTMLElement, offset: number, className: string, text
     return;
   }
   root.appendChild(span);
-}
-
-/** Deterministic pastel colour per author name. */
-export function colorForAuthor(author: string): string {
-  let hash = 0;
-  for (let i = 0; i < author.length; i++) {
-    hash = (hash << 5) - hash + author.charCodeAt(i);
-    hash |= 0;
-  }
-  const hue = Math.abs(hash) % 360;
-  return `oklch(70% 0.12 ${hue})`;
 }
