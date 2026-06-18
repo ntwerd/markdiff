@@ -13,19 +13,24 @@ wrapper, unified-diff parser, and initial renderer. The interactive Obsidian UI
 is not complete yet: **Toggle diff mode** and **Browse changed Markdown files**
 are registered, but their command handlers still throw `Not implemented`.
 
-The example below shows the target reading experience for a partial-line edit.
-The raw git diff changes `Hi there,` to `Hello World!`. markdiff keeps the
-shared `H`, marks `i there,` as removed, and inserts `ello World!` at the same
-position.
+The example below shows the target compact treatment for a partial-line edit.
+The raw git diff changes `Hi there,` to `Hello World!`. In the intended UI, the
+unchanged prefix stays readable, the removed text is struck through, and the
+added text appears inline at the edit point.
 
 ```
 Raw git diff
 - Hi there,
 + Hello World!
 
-Target partial-line rendering
+Intended compact partial-line rendering
 H[-i there,-][+ello World!+]
 ```
+
+The current parser uses `diffChars` to compute character segments, and the
+renderer still needs DOM wrapping for those segments. This example describes the
+UI grouping markdiff is aiming for, not literal output from the current
+scaffold.
 
 ## Target character diffs in rich text
 
@@ -36,7 +41,8 @@ links, tables, and code spans instead of reading raw Markdown syntax.
 In the examples, `[+added+]` means green added text, and `[-removed-]` means red
 strikethrough deleted text. These markers explain the intended styling; they are
 not literal text that appears in Obsidian. In the partial-line example above,
-the leading `H` stays unstyled because it is unchanged.
+the leading `H` stays unstyled in the intended compact view because it is
+unchanged.
 
 | Markdown change | Rich text display |
 | --- | --- |

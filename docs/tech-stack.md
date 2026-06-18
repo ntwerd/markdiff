@@ -7,7 +7,9 @@ the plugin.
 markdiff is currently an implementation scaffold. The git wrapper, diff parser,
 settings UI, command registration, and initial renderer exist. The inline note
 UI, changed-files browser, restore UI, blame-to-line author mapping, and
-character-span wrapping inside rendered Markdown are still TODOs.
+character-span wrapping inside rendered Markdown are still TODOs. Compact
+partial-line grouping, such as the README example `H[-i there,-][+ello World!+]`,
+is also target UI behavior rather than current scaffold output.
 
 ## Goals recap
 
@@ -16,6 +18,8 @@ Markdown**, with:
 
 - comparison of any two versions of a note, or two different files;
 - **character-level** diffs highlighted *inside* the rendered rich text;
+- compact partial-line edits that keep unchanged text readable while showing
+  removed and added text inline at the edit point;
 - color-coding by change type and by commit author;
 - navigation between changes and one-click restore of a version;
 - inline diff mode in the active note and a vault-wide changed-files list.
@@ -30,14 +34,18 @@ Desktop-only — it shells out to the real `git` binary.
 | Diff parsing + character refinement | **`diff`** (jsdiff) | `^9.0.0` | BSD-3-Clause, bundled TypeScript types, no runtime dependencies, and one package for both unified-diff parsing (`parsePatch`) and character refinement (`diffChars`). |
 | Markdown rendering | *(none: host API)* | - | Obsidian's built-in `MarkdownRenderer.render(app, md, el, sourcePath, component)` renders the Markdown through the same host pipeline the note uses. |
 
-Nothing else is bundled. CodeMirror (`@codemirror/*`, `@lezer/*`), `electron`,
-`obsidian`, and Node builtins are all provided by the host at runtime and listed
-as esbuild **externals**.
+No other package is added as a direct runtime dependency. `simple-git` brings a
+small set of transitive packages, and esbuild bundles those unless they are
+listed as externals. CodeMirror (`@codemirror/*`, `@lezer/*`), `electron`,
+`obsidian`, and Node builtins are provided by the host at runtime and listed as
+esbuild **externals**.
 
 ### Research snapshot
 
 Checked on June 18, 2026. Package versions and download counts are
-time-sensitive, so refresh this section before a dependency upgrade.
+time-sensitive, so refresh this section before a dependency upgrade. The npm
+registry values were rechecked on June 18, 2026, while aligning this document
+with `README.md`.
 
 | Package | Current npm version | License | npm downloads, June 10-16, 2026 | Notes |
 |---------|---------------------|---------|----------------------------------|-------|
@@ -76,22 +84,28 @@ time-sensitive, so refresh this section before a dependency upgrade.
 ## Build & dev tooling (devDependencies)
 
 The development tooling follows the same shape as the official
-`obsidian-sample-plugin`:
+`obsidian-sample-plugin`. The versions below are the package specs in
+`package.json`; caret ranges can resolve to newer installed patch or minor
+versions.
 
-| Package | Version | Role |
+| Package | Package spec | Role |
 |---------|---------|------|
 | `obsidian` | `1.13.1` | API typings (external, not bundled) |
 | `esbuild` | `0.25.5` | Bundler |
 | `builtin-modules` | `^5.0.0` | Feeds Node builtins into esbuild externals |
 | `typescript` | `^5.8.3` | Compiler / type-check (`tsc -noEmit`) |
 | `@types/node` | `^22.15.17` | Node typings (for `child_process`, `path`) |
-| `eslint` + `@eslint/js` + `typescript-eslint` | `^9.39` / `^8.59` | Lint (flat config) |
+| `eslint` + `@eslint/js` + `typescript-eslint` | `^9.39.4` / `^9.39.4` / `^8.59.1` | Lint (flat config) |
 | `eslint-plugin-obsidianmd` | `^0.3.0` | Obsidian submission-readiness rules |
-| `globals`, `jiti` | — | ESLint flat-config support |
+| `globals`, `jiti` | `^17.6.0`, `^2.6.1` | ESLint flat-config support |
 
 `esbuild.config.mjs` writes the bundle to `main.js` at the repository root. The
 manual install flow copies `main.js`, `manifest.json`, and `styles.css` into the
 vault plugin directory.
+
+`package.json` runs `tsc -noEmit` before the production bundle. `tsconfig.json`
+sets `skipLibCheck` so external Obsidian API typings do not block source
+type-checking.
 
 ## Target architecture & data flow
 
@@ -108,6 +122,7 @@ active note ──▶ Repo.forFile()            (git/repo.ts)
             parseUnifiedDiff()             (diff/parse.ts)
                   │  parsePatch → hunks of add/del/context lines
                   │  refineCharacters → diffChars per del/add pair
+                  │  TODO: compact partial-line grouping for the UI
                   ▼
             FileDiff (diff/types.ts)
                   │  + per-line author from Repo.blamePorcelain()
@@ -124,6 +139,28 @@ active note ──▶ Repo.forFile()            (git/repo.ts)
 `MarkdownRenderer.render()`. It accepts parsed character segments, but the DOM
 post-processing that wraps those segments inside rendered Markdown has not been
 implemented yet.
+
+`parseUnifiedDiff()` currently refines only immediately adjacent delete/add
+line pairs. It does not yet pair full multi-line delete/add runs, so larger
+paragraph rewrites need a smarter line-pairing step before character
+normalization.
+
+### Partial-line edit target
+
+The README uses `Hi there,` → `Hello World!` to show the intended compact
+partial-line treatment:
+
+```
+H[-i there,-][+ello World!+]
+```
+
+This display keeps the unchanged prefix visible, strikes through removed text,
+and inserts added text at the same edit point. The current parser delegates to
+jsdiff's `diffChars`, which can preserve interior matching characters as
+separate unchanged segments. For the README example, `diffChars` keeps `H`, `e`,
+and `r` as unchanged segments. If the compact display remains the desired UI,
+add a normalization step after `diffChars` or in the renderer before DOM
+wrapping.
 
 ### Why the reading view, not CodeMirror decorations
 
@@ -163,6 +200,9 @@ Still required:
 - **Constrain `--no-index`:** `Repo.diffFiles()` currently accepts arbitrary
   absolute paths. Before exposing file-to-file comparison in the UI,
   `realpath`-confine both inputs under the vault.
+- **Filter changed files for the UI:** `Repo.changedFiles()` returns every git
+  status path. The changed-files browser described in `README.md` must filter
+  that list to Markdown notes before display.
 - **Validate refs:** reject leading-`-` refs and invalid revision strings before
   passing user-controlled refs into `diffRefs()`, `showAtRef()`,
   `blamePorcelain()`, or `restore()`.
@@ -184,5 +224,5 @@ src/
 │   ├── types.ts         FileDiff / DiffHunk / DiffLine / TextSegment
 │   └── parse.ts         unified-diff parsing + character-level refinement
 └── render/
-    └── renderDiff.ts    render a FileDiff inline via MarkdownRenderer
+    └── renderDiff.ts    render whole FileDiff lines via MarkdownRenderer
 ```
