@@ -53,21 +53,43 @@ export function assertSafePath(p: string): string {
 /**
  * Environment overrides that neutralise malicious-repo escape vectors.
  *
- * The dangerous vars are *removed* (set to `undefined`, which child_process
- * drops) rather than set to `""` — an empty `GIT_EXTERNAL_DIFF` makes git try
- * to exec an empty command and fail every diff. `core.pager=cat` is already
- * forced via config, and `GIT_PAGER=cat` keeps a safe pager if one is read.
+ * Every git env var that simple-git's vulnerability guard flags (or that git
+ * itself could use to exec an arbitrary program) is *deleted* from the copy
+ * rather than set to `""` / `undefined`: simple-git stringifies `undefined`
+ * values and still flags the key, and an empty `GIT_EXTERNAL_DIFF` would make
+ * git try to exec an empty command. Deleting keeps the key out of both the
+ * guard and the child process. `GIT_TERMINAL_PROMPT` is set to stop git from
+ * blocking on a credentials prompt; it is not a guard-flagged key.
  */
+const FLAGGED_GIT_ENV_KEYS: ReadonlySet<string> = new Set([
+  "editor",
+  "git_askpass",
+  "git_config_global",
+  "git_config_system",
+  "git_config_count",
+  "git_config",
+  "git_editor",
+  "git_exec_path",
+  "git_external_diff",
+  "git_pager",
+  "git_proxy_command",
+  "git_template_dir",
+  "git_sequence_editor",
+  "git_ssh",
+  "git_ssh_command",
+  "pager",
+  "prefix",
+  "ssh_askpass",
+]);
+
 function hardenedEnv(): Record<string, string | undefined> {
-  return {
-    ...process.env,
-    GIT_EXTERNAL_DIFF: undefined,
-    GIT_PAGER: "cat",
-    GIT_SSH: undefined,
-    GIT_SSH_COMMAND: undefined,
-    GIT_SSH_VARIANT: undefined,
-    GIT_TERMINAL_PROMPT: "0",
-  };
+  const env: Record<string, string | undefined> = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (FLAGGED_GIT_ENV_KEYS.has(key.toLowerCase())) continue;
+    env[key] = value;
+  }
+  env.GIT_TERMINAL_PROMPT = "0";
+  return env;
 }
 
 /**
@@ -90,8 +112,6 @@ export class Repo {
       baseDir,
       binary: gitBinary && gitBinary.length > 0 ? gitBinary : "git",
       maxConcurrentProcesses: 4,
-      // Harden against malicious-repo RCE via .gitattributes / config.
-      config: ["diff.external=", "core.pager=cat"],
     };
     return simpleGit(options).env(hardenedEnv());
   }
@@ -102,7 +122,11 @@ export class Repo {
       const root = (await git.revparse(["--show-toplevel"])).trim();
       await git.cwd(root);
       return new Repo(root, git);
-    } catch {
+    } catch (err) {
+      // Don't swallow silently: a real git failure (missing binary, guard
+      // throw, permissions) otherwise shows as "not inside a Git repository"
+      // in the UI. Log so the actual cause is visible in the devtools console.
+      console.error("[markdiff] git repo bind failed for", baseDir, err);
       return null;
     }
   }
@@ -132,9 +156,14 @@ export class Repo {
   async diffRefs(relPath: string, refA: string, refB?: string): Promise<string> {
     const a = assertSafeRef(refA);
     const path = assertSafePath(relPath);
+    // --no-ext-diff ignores any `diff.external` config / GIT_EXTERNAL_DIFF so a
+    // malicious repo can't run an arbitrary program during the diff. Setting
+    // `diff.external` to empty via `-c` would instead *activate* external diff
+    // with an empty program name ("cannot run : No such file"); --no-ext-diff
+    // is the correct neutraliser.
     const args = refB
-      ? ["--no-textconv", a, assertSafeRef(refB), "--", path]
-      : ["--no-textconv", a, "--", path];
+      ? ["--no-ext-diff", "--no-textconv", a, assertSafeRef(refB), "--", path]
+      : ["--no-ext-diff", "--no-textconv", a, "--", path];
     return this.git.diff(args);
   }
 
@@ -148,7 +177,7 @@ export class Repo {
     const realB = await confineUnder(absFileB, confineDir);
     // --no-index exits non-zero when the files differ; swallow that.
     try {
-      return await this.git.diff(["--no-index", "--no-textconv", "--", realA, realB]);
+      return await this.git.diff(["--no-index", "--no-ext-diff", "--no-textconv", "--", realA, realB]);
     } catch (err: unknown) {
       const e = err as { git?: { stdout?: string } };
       if (e.git?.stdout) return e.git.stdout;
