@@ -94,14 +94,15 @@ versions.
 | `esbuild` | `0.25.5` | Bundler |
 | `builtin-modules` | `^5.0.0` | Feeds Node builtins into esbuild externals |
 | `typescript` | `^5.8.3` | Compiler / type-check (`tsc -noEmit`) |
-| `@types/node` | `^22.15.17` | Node typings (for `child_process`, `path`) |
+| `@types/node` | `^22.15.17` | Node typings (for `path` in `git/repo.ts`, `process` in `esbuild.config.mjs`) |
 | `eslint` + `@eslint/js` + `typescript-eslint` | `^9.39.4` / `^9.39.4` / `^8.59.1` | Lint (flat config) |
 | `eslint-plugin-obsidianmd` | `^0.3.0` | Obsidian submission-readiness rules |
 | `globals`, `jiti` | `^17.6.0`, `^2.6.1` | ESLint flat-config support |
 
 `esbuild.config.mjs` writes the bundle to `main.js` at the repository root. The
-manual install flow copies `main.js`, `manifest.json`, and `styles.css` into the
-vault plugin directory.
+`version` npm script runs `version-bump.mjs` to keep `manifest.json` and
+`versions.json` in sync on release. The manual install flow copies `main.js`,
+`manifest.json`, and `styles.css` into the vault plugin directory.
 
 `package.json` runs `tsc -noEmit` before the production bundle. `tsconfig.json`
 sets `skipLibCheck` so external Obsidian API typings do not block source
@@ -124,26 +125,29 @@ active note ──▶ Repo.forFile()            (git/repo.ts)
                   │  refineCharacters → diffChars per del/add pair
                   │  TODO: compact partial-line grouping for the UI
                   ▼
-            FileDiff (diff/types.ts)
-                  │  + per-line author from Repo.blamePorcelain()
+            FileDiff[] (diff/types.ts)     one entry per changed file
+                  │  TODO: + per-line author from Repo.blamePorcelain()
                   ▼
             renderFileDiff()               (render/renderDiff.ts)
+                  │  called once per FileDiff
                   │  MarkdownRenderer.render() per line
+                  │  + per-author colour via colorForAuthor() when author set
                   │  TODO: wrap character segments in .markdiff-add /
                   │        .markdiff-del
                   ▼
             inline in the note's reading view
 ```
 
-`renderFileDiff()` currently renders whole diff lines through
-`MarkdownRenderer.render()`. It accepts parsed character segments, but the DOM
-post-processing that wraps those segments inside rendered Markdown has not been
-implemented yet.
+`renderFileDiff()` runs once per `FileDiff` and currently renders whole diff
+lines through `MarkdownRenderer.render()`, applying a per-author colour via
+`colorForAuthor()` whenever a line's `author` is set. It accepts parsed
+character segments, but the DOM post-processing that wraps those segments inside
+rendered Markdown has not been implemented yet.
 
-`parseUnifiedDiff()` currently refines only immediately adjacent delete/add
-line pairs. It does not yet pair full multi-line delete/add runs, so larger
-paragraph rewrites need a smarter line-pairing step before character
-normalization.
+`parseUnifiedDiff()` returns one `FileDiff` per changed file in the unified
+diff, and currently refines only immediately adjacent delete/add line pairs. It
+does not yet pair full multi-line delete/add runs, so larger paragraph rewrites
+need a smarter line-pairing step before character normalization.
 
 ### Partial-line edit target
 
@@ -224,5 +228,5 @@ src/
 │   ├── types.ts         FileDiff / DiffHunk / DiffLine / TextSegment
 │   └── parse.ts         unified-diff parsing + character-level refinement
 └── render/
-    └── renderDiff.ts    render whole FileDiff lines via MarkdownRenderer
+    └── renderDiff.ts    render FileDiff lines via MarkdownRenderer (+ author colour)
 ```
