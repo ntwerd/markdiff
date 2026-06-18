@@ -1,4 +1,4 @@
-# markdiff
+# markdiff 🔀
 
 > View git diffs of Markdown files as **rendered Markdown** instead of raw
 > `+`/`-` source.
@@ -34,7 +34,7 @@ The renderer wraps the changed characters in styled spans inside the rendered
 Markdown; the `[- -]` / `[+ +]` markers above just denote the red/green styling
 and are not literal text.
 
-## Character diffs in rich text
+## ✏️ Character diffs in rich text
 
 markdiff highlights tiny edits inside the rendered Markdown
 output. That means you review the changed letters inside headings, bold text,
@@ -54,9 +54,9 @@ unchanged.
 | `` `git dif` `` → `` `git diff` `` | rendered code span: `git dif[+f+]` |
 | `drafft` in a table cell → `draft` | rendered table text: draf[-f-]t |
 
-## Current status
+## ✅ Current status
 
-Implemented:
+**Implemented:**
 
 - Git repository discovery, diff, blame, show, and restore through `simple-git`,
   with ref/path validation and malicious-repo hardening.
@@ -71,22 +71,22 @@ Implemented:
 - Colour coding by change type and by commit author (via `git blame`).
 - Settings for the default base ref, author colouring, and git binary path.
 
-Planned / not yet surfaced:
+**Planned / not yet surfaced:**
 
 - File-to-file comparison in the UI (the `git diff --no-index` path exists and is
   vault-confined, but no command exposes it yet).
 - A richer ref picker beyond the default base ref and recent `HEAD~n` options.
 
-## Requirements
+## 📋 Requirements
 
 - [Obsidian](https://obsidian.md) **1.5.0** or newer, matching
   `manifest.json` (desktop only; see below).
 - `git` installed and available on your `PATH`.
 - Your Obsidian vault (or a parent directory) must be a git repository.
 
-> markdiff shells out to the system `git` binary, so it runs on **desktop only** (macOS, Windows, Linux). It is not available on Obsidian mobile.
+> 💻 markdiff shells out to the system `git` binary, so it runs on **desktop only** (macOS, Windows, Linux). It is not available on Obsidian mobile.
 
-## Installation
+## 📦 Installation
 
 ### From Obsidian
 
@@ -112,7 +112,7 @@ cp main.js manifest.json styles.css \
 Restart Obsidian or reload plugins, then enable **markdiff** under
 **Settings** → **Community plugins**.
 
-## Usage
+## 🚀 Usage
 
 1. Open a Markdown note that has uncommitted or committed changes.
 2. Run **markdiff: Toggle diff mode** or click the ribbon icon. A diff view opens
@@ -129,12 +129,12 @@ Restart Obsidian or reload plugins, then enable **markdiff** under
    the vault and open any of them in the diff view.
 8. Close the diff tab (or toggle the command again) to exit diff mode.
 
-Tip: bind the commands to hotkeys under **Settings → Hotkeys**.
+**💡 Tip:** bind the commands to hotkeys under **Settings → Hotkeys**.
 
 For implementation details and current TODOs, see
 [tech stack and architecture](./docs/tech-stack.md).
 
-## Development
+## 🛠️ Development
 
 ```bash
 npm install      # install dependencies
@@ -151,7 +151,7 @@ community plugin to reload on save.
 See [tech stack and architecture](./docs/tech-stack.md) for the full
 architecture, data flow, and conventions.
 
-## How it works
+## ⚙️ How it works
 
 1. `Repo.forFile()` finds the git repository root for a file.
 2. `Repo.diffRefs()` runs `git diff --no-textconv <ref> -- <path>` against the
@@ -170,6 +170,6 @@ call; `DiffView` invokes it and hosts the result in a workspace leaf with the
 compare banner, change navigation, and restore. `ChangedFilesModal` lists the
 changed notes.
 
-## License
+## 📄 License
 
 MIT, as declared in `package.json`.
