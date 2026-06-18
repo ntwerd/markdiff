@@ -261,7 +261,9 @@ src/
 │   └── renderDiff.ts    render FileDiff lines + inline char spans
 ├── lib/
 │   ├── util.ts          shared helpers (errorMessage, isRecord)
-│   └── color.ts         deterministic per-author colour
+│   ├── color.ts         deterministic per-author colour
+│   ├── fence.ts         code-fence detection (pure, unit-tested)
+│   └── path.ts          repo→vault path mapping (pure, unit-tested)
 ├── view/
 │   └── DiffView.ts      inline diff view: banner, ref picker, nav, restore
 └── ui/

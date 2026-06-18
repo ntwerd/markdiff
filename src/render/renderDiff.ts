@@ -2,6 +2,7 @@ import { App, Component, MarkdownRenderer } from "obsidian";
 import { DiffHunk, DiffLine, FileDiff } from "../diff/types";
 import { splitCommon } from "../diff/segments";
 import { colorForAuthor } from "../lib/color";
+import { detectFence, isClosingFence } from "../lib/fence";
 
 export interface RenderOptions {
   /** Tint each line with its commit author's colour when an author is set. */
@@ -94,24 +95,6 @@ async function renderHunk(
     await renderStandaloneLine(app, line, containerEl, sourcePath, component, options);
     i++;
   }
-}
-
-const FENCE_RE = /^(`{3,}|~{3,})/;
-
-interface FenceInfo {
-  char: string;
-  length: number;
-}
-
-function detectFence(text: string): FenceInfo | null {
-  const match = text.match(FENCE_RE);
-  if (!match) return null;
-  const fence = match[1];
-  return { char: fence[0], length: fence.length };
-}
-
-function isClosingFence(text: string, opening: FenceInfo): boolean {
-  return new RegExp(`^${opening.char}{${opening.length},}\\s*$`).test(text);
 }
 
 async function renderCodeBlock(

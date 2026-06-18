@@ -1,9 +1,9 @@
 import { App, Modal, Setting } from "obsidian";
-import { join, relative, sep } from "node:path";
 import { realpath } from "node:fs/promises";
 import type MarkdiffPlugin from "../main";
 import { Repo } from "../git/repo";
 import { errorMessage } from "../lib/util";
+import { toVaultPaths } from "../lib/path";
 
 /**
  * Modal listing the vault's changed Markdown files. Selecting one opens it in
@@ -73,15 +73,4 @@ export class ChangedFilesModal extends Modal {
     list.empty();
     list.createEl("p", { text });
   }
-}
-
-/** Convert repo-relative git paths to vault-relative paths inside the vault. */
-function toVaultPaths(repoRelPaths: string[], repoRoot: string, vaultRoot: string): string[] {
-  const out: string[] = [];
-  for (const repoRel of repoRelPaths) {
-    const abs = join(repoRoot, repoRel);
-    const vaultRel = relative(vaultRoot, abs).split(sep).join("/");
-    if (vaultRel.length > 0 && !vaultRel.startsWith("../")) out.push(vaultRel);
-  }
-  return out.sort((a, b) => a.localeCompare(b));
 }
