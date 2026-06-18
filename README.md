@@ -13,14 +13,18 @@ wrapper, unified-diff parser, and initial renderer. The interactive Obsidian UI
 is not complete yet: **Toggle diff mode** and **Browse changed Markdown files**
 are registered, but their command handlers still throw `Not implemented`.
 
+The example below shows the target reading experience for a partial-line edit.
+The raw git diff changes `Hi there,` to `Hello World!`. markdiff keeps the
+shared `H`, marks `i there,` as removed, and inserts `ello World!` at the same
+position.
+
 ```
-Raw git diff                  →  markdiff
-────────────────────────────     ────────────────────────────────
-- ## Roadmap                     Roadmap (rendered h2, struck through)
-+ # Roadmap                      Roadmap (rendered h1, added)
-+                                blank added line
-- Now with **data**.             
-+ Now with **date**.             Now with dat[-a-+e+]. strikethrough "a", added "e"
+Raw git diff
+- Hi there,
++ Hello World!
+
+Target partial-line rendering
+H[-i there,-][+ello World!+]
 ```
 
 ## Target character diffs in rich text
@@ -29,9 +33,10 @@ markdiff is designed to highlight tiny edits inside the rendered Markdown
 output. That means you review the changed letters inside headings, bold text,
 links, tables, and code spans instead of reading raw Markdown syntax.
 
-The examples below use `[+added+]` and `[-removed-]` markers to show where the
-UI applies green additions and red strikethrough deletions. The markers are not
-shown as literal text in Obsidian.
+In the examples, `[+added+]` means green added text, and `[-removed-]` means red
+strikethrough deleted text. These markers explain the intended styling; they are
+not literal text that appears in Obsidian. In the partial-line example above,
+the leading `H` stays unstyled because it is unchanged.
 
 | Markdown change | Rich text display |
 | --- | --- |
